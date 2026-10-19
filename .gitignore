@@ -1,0 +1,28 @@
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Python virtual environment
+venv/
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Local database and SQLite files
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Test and development files
+.pytest_cache/
+
+# Legacy standalone utilities
+src/view_orders.py
+src/transaction_entry.py
+src/view_data.py
+src/transaction_analyzer.py
+# Legacy CSV analysis files
+data/*.csv
