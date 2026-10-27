@@ -477,6 +477,112 @@ def migrate_payments_table():
     finally:
         connection.close()
 
+
+
+# ==========================================
+# MIGRATE INVENTORY TABLES
+# ==========================================
+def migrate_inventory_tables():
+    """Add the fields and table needed for inventory tracking."""
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        # 1. Check whether products has a stock target.
+        cursor.execute("PRAGMA table_info(products)")
+        product_columns = [column[1] for column in cursor.fetchall()]
+
+        if "target_stock_quantity" not in product_columns:
+            cursor.execute("""
+                ALTER TABLE products
+                ADD COLUMN target_stock_quantity INTEGER NOT NULL DEFAULT 0
+            """)
+
+        if "stock_handling" not in product_columns:
+            cursor.execute("""
+                ALTER TABLE products
+                ADD COLUMN stock_handling TEXT NOT NULL
+                DEFAULT 'CARRY_FORWARD'
+            """)
+
+        # 2. Check whether daily_inventory has a closing count.
+        cursor.execute("PRAGMA table_info(daily_inventory)")
+        inventory_columns = [column[1] for column in cursor.fetchall()]
+
+        if "physical_closing_quantity" not in inventory_columns:
+            cursor.execute("""
+                ALTER TABLE daily_inventory
+                ADD COLUMN physical_closing_quantity INTEGER
+            """)
+
+        # 3. Add the owner's projected sales quantity.
+        if "projected_sales_quantity" not in inventory_columns:
+            cursor.execute("""
+                ALTER TABLE daily_inventory
+                ADD COLUMN projected_sales_quantity INTEGER NOT NULL DEFAULT 0
+            """)
+
+        # 4. Create a table for individual stock deliveries.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stock_movements (
+                movement_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                daily_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                quantity_received INTEGER NOT NULL
+                    CHECK (quantity_received > 0),
+                received_at TEXT NOT NULL,
+                notes TEXT,
+                FOREIGN KEY (daily_id)
+                    REFERENCES daily_business(daily_id),
+                FOREIGN KEY (product_id)
+                    REFERENCES products(product_id)
+            )
+        """)
+
+        connection.commit()
+        print("Inventory tables migrated successfully.")
+
+    except Exception:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()
+
+
+# ==========================================
+# MIGRATE DAILY BUSINESS TABLE
+# ==========================================
+def migrate_daily_business_table():
+    """Add a status to track business-day completion."""
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("PRAGMA table_info(daily_business)")
+        columns = [column[1] for column in cursor.fetchall()]
+
+        if "status" not in columns:
+            cursor.execute("""
+                ALTER TABLE daily_business
+                ADD COLUMN status TEXT NOT NULL DEFAULT 'OPEN'
+            """)
+
+        connection.commit()
+        print("Daily business status migration completed successfully.")
+
+    except Exception:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()
+
+
 # ==========================================
 # DATABASE INITIALIZATION
 # ==========================================
@@ -494,6 +600,8 @@ def initialize_database():
     create_tables()
     migrate_orders_table()
     migrate_payments_table()
+    migrate_inventory_tables()
+    migrate_daily_business_table()
 
 
 # ==========================================

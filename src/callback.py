@@ -1,11 +1,11 @@
 
-from fastapi import FastAPI, Body
-from database import get_connection
+from fastapi import APIRouter, Body
+from src.database import get_connection
 
-app = FastAPI()
+router = APIRouter()
 
 
-@app.post("/mpesa/callback")
+@router.post("/mpesa/callback")
 async def mpesa_callback(callback_data: dict = Body(...)):
     # Extract Safaricom's callback information.
     try:
@@ -59,8 +59,6 @@ async def mpesa_callback(callback_data: dict = Body(...)):
         mpesa_reference = details.get("MpesaReceiptNumber")
         paid_amount = details.get("Amount")
 
-
-
         # Start a transaction before changing payment or order status.
         connection.execute("BEGIN")
 
@@ -85,11 +83,17 @@ async def mpesa_callback(callback_data: dict = Body(...)):
         else:
             # Determine the outcome of this callback.
             if str(result_code) == "0":
-                if (
-                    paid_amount is None
-                    or round(float(paid_amount), 2)
-                    != round(float(expected_amount), 2)
-                ):
+                # Confirm the amount safely before marking the payment complete.
+                try:
+                    amount_matches = (
+                        paid_amount is not None
+                        and round(float(paid_amount), 2)
+                        == round(float(expected_amount), 2)
+                    )
+                except (TypeError, ValueError):
+                    amount_matches = False
+
+                if not amount_matches:
                     payment_status = "REVIEW_REQUIRED"
                     print(
                         "Payment amount is missing or does not match:",
@@ -97,9 +101,14 @@ async def mpesa_callback(callback_data: dict = Body(...)):
                     )
                 else:
                     payment_status = "COMPLETED"
+
+            elif str(result_code) == "1032":
+                payment_status = "CANCELLED"
+
             else:
                 payment_status = "FAILED"
 
+            # Update the payment record.
             cursor.execute("""
                 UPDATE payments
                 SET payment_status = ?,
@@ -116,11 +125,21 @@ async def mpesa_callback(callback_data: dict = Body(...)):
                 payment_id
             ))
 
+            # Update the order only when its payment outcome is confirmed.
             if payment_status == "COMPLETED":
                 cursor.execute("""
                     UPDATE orders
                     SET order_status = 'PAID'
                     WHERE order_id = ?
+                      AND order_status = 'PENDING_PAYMENT'
+                """, (order_id,))
+
+            elif payment_status == "FAILED":
+                cursor.execute("""
+                    UPDATE orders
+                    SET order_status = 'PAYMENT_FAILED'
+                    WHERE order_id = ?
+                      AND order_status = 'PENDING_PAYMENT'
                 """, (order_id,))
 
             connection.commit()
@@ -132,7 +151,6 @@ async def mpesa_callback(callback_data: dict = Body(...)):
     except Exception:
         connection.rollback()
         raise
-
 
     finally:
         connection.close()

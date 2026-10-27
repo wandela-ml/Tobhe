@@ -1,0 +1,290 @@
+
+:root {
+    --primary: #176b4d;
+    --primary-dark: #104d38;
+    --background: #f2f7f5;
+    --surface: #ffffff;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --radius: 16px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: var(--background);
+    color: var(--text);
+}
+
+/* Centered brand header */
+.hero {
+    background: linear-gradient(120deg, #104d38, #206b52);
+    color: white;
+    padding: 15px 20px;
+    text-align: center;
+    min-height: 180px;
+    box-sizing: border-box;
+}
+
+.brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+}
+
+.brand-icon {
+    width: 132px;
+    height: 132px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
+    border: 4px solid #d1fae5;
+    margin-bottom: 18px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.brand h1 {
+    margin: 0;
+    font-size: 48px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+
+.brand p {
+    margin: 6px 0 0;
+    color: #d1fae5;
+    font-size: 21px;
+}
+
+/* Main dashboard */
+.dashboard {
+    width: min(1260px, 90%);
+    margin: 50px auto 30px;
+}
+
+.welcome-section {
+    margin-bottom: 54px;
+}
+
+.welcome-section h2 {
+    margin: 0 0 14px;
+    font-size: 38px;
+    font-weight: 800;
+}
+
+.welcome-section p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 21px;
+}
+
+.branches-section h3 {
+    margin: 0 0 16px;
+    color: #526176;
+    font-size: 25px;
+}
+
+/* Responsive branch cards */
+.branches-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 28px;
+}
+
+.branch-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    min-width: 0;
+    text-align: center;
+    box-shadow: 0 5px 16px rgba(15, 23, 42, 0.06);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.branch-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+
+.branch-card h4 {
+    margin: 18px 0 12px;
+    font-size: 24px;
+    overflow-wrap: anywhere;
+}
+
+.branch-card p {
+    margin: 0 0 26px;
+    color: var(--muted);
+    font-size: 18px;
+}
+
+/* Branch icons created with CSS */
+.branch-icon {
+    width: 100px;
+    height: 100px;
+    margin: 0 auto;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 42px;
+}
+.branch-icon i {
+    color: var(--primary-dark);
+    font-size: 42px;
+}
+
+.branch-icon.restaurant {
+    background: #fff0d8;
+}
+
+.branch-icon.clothing {
+    background: #dceeff;
+}
+
+.branch-icon.accommodation {
+    background: #eee0ff;
+}
+
+.branch-button {
+    width: 100%;
+    border: none;
+    border-radius: 10px;
+    background: var(--primary);
+    color: white;
+    padding: 17px 14px;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.branch-button:hover {
+    background: var(--primary-dark);
+}
+
+.branch-button:focus-visible {
+    outline: 3px solid #80c9a8;
+    outline-offset: 3px;
+}
+
+#status-message {
+    margin-top: 20px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.page-footer {
+    margin-top: 54px;
+    padding: 10px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 16px;
+}
+
+@media (max-width: 900px) {
+    .branches-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .welcome-section h2 {
+        font-size: 32px;
+    }
+}
+
+@media (max-width: 600px) {
+    .hero {
+        padding: 28px 16px;
+    }
+
+    .brand-icon {
+        width: 100px;
+        height: 100px;
+    }
+
+    .brand h1 {
+        font-size: 36px;
+    }
+
+    .brand p {
+        font-size: 16px;
+    }
+
+    .dashboard {
+        width: 90%;
+        margin-top: 32px;
+    }
+
+    .welcome-section {
+        margin-bottom: 36px;
+    }
+
+    .welcome-section h2 {
+        font-size: 27px;
+    }
+
+    .welcome-section p {
+        font-size: 16px;
+        line-height: 1.5;
+    }
+
+    .branches-grid {
+        grid-template-columns: 1fr;
+        gap: 18px;
+    }
+
+    .branch-card {
+        padding: 24px;
+    }
+
+    .branch-card h4 {
+        font-size: 21px;
+    }
+
+    .page-footer {
+        margin-top: 36px;
+    }
+}
+/* Main navigation */
+.main-nav {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 24px;
+    padding: 14px 20px;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.main-nav a {
+    color: #333333;
+    text-decoration: none;
+    font-weight: 600;
+    padding: 8px 4px;
+    transition: color 0.2s ease;
+}
+
+.main-nav a:hover,
+.main-nav a:focus,
+.main-nav a.active {
+    color: #b7791f;
+}
+
+@media (max-width: 480px) {
+    .main-nav {
+        gap: 12px;
+        padding: 12px 8px;
+    }
+
+    .main-nav a {
+        font-size: 14px;
+    }
+}

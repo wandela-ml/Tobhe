@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tobhe | Order from Local Businesses</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="hero">
+        <div class="brand">
+            <img
+                src="/static/tobhe.jpg"
+                alt="Traditional Tobhe lamp"
+                class="brand-icon"
+            >
+            <h1>Tobhe</h1>
+            <p>Shining a light on your business.</p>
+        </div>
+    </header>
+    <nav class="main-nav" aria-label="Main navigation">
+        <a href="/" class="active">Home</a>
+        <a href="/#branches-section">Customer</a>
+        <a href="/employee">Employee</a>
+        <a href="/owner">Owner</a>
+    </nav>
+
+
+    <main class="dashboard">
+        <section class="welcome-section">
+            <h2>Welcome!</h2>
+            <p>Discover our businesses and place your order.</p>
+        </section>
+
+        <section id="branches-section" class="branches-section">
+            <h3>Choose a business</h3>
+            <div id="branches-container" class="branches-grid">
+                <p>Loading businesses...</p>
+            </div>
+        </section>
+
+        <section id="ordering-section" hidden>
+            <h3 id="selected-branch-name">Place your order</h3>
+
+            <form id="customer-order-form">
+                <div id="products-container">
+                    <p>Select a business to view its products.</p>
+                </div>
+
+                <div id="order-total">
+                    Total: KSh 0.00
+                </div>
+
+                <label for="customer-phone">M-Pesa phone number</label>
+                <input
+                    type="tel"
+                    id="customer-phone"
+                    name="phone_number"
+                    placeholder="e.g. 0712345678"
+                    required
+                >
+
+                <button type="submit" id="place-order-button">
+                    Place Order
+                </button>
+            </form>
+
+            <p id="order-status" role="status"></p>
+        </section>
+
+        <footer class="page-footer">
+            Welcome to Tobhe. Your business, our focus.
+        </footer>
+    </main>
+
+    <script src="/static/customer.js"></script>
+</body>
+</html>

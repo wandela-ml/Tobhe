@@ -3,8 +3,8 @@ from datetime import datetime
 from uuid import uuid4
 import re
 
-from database import get_connection
-from mpesa import initiate_payment
+from src.database import get_connection
+from src.mpesa import initiate_payment
 
 
 #=======================================================
@@ -234,22 +234,23 @@ def save_mpesa_response(payment_id, response):
     try:
         cursor = connection.cursor()
 
+        
         cursor.execute("""
             UPDATE payments
             SET checkout_request_id = ?,
                 merchant_request_id = ?,
                 result_code = ?,
                 result_description = ?,
-                payment_status = ?
+                payment_status = CASE
+                    WHEN payment_status = 'COMPLETED'
+                    THEN payment_status
+                    ELSE ?
+                END
             WHERE payment_id = ?
-        """, (
-            checkout_request_id,
-            merchant_request_id,
-            str(response_code) if response_code is not None else None,
-            response_description,
-            payment_status,
-            payment_id
-        ))
+        """, (checkout_request_id, merchant_request_id,
+              str(response_code) if response_code is not None else None,
+              response_description, payment_status, payment_id))
+
 
         if cursor.rowcount == 0:
             raise ValueError(
@@ -326,3 +327,4 @@ if __name__ == "__main__":
             "Check its status before retrying, to avoid "
             "creating a duplicate payment request."
         )
+

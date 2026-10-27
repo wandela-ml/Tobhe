@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tobhe | Employee Daily Entry</title>
+    <link rel="stylesheet" href="/static/employee.css">
+</head>
+<body>
+    <header class="page-header">
+        <h1>Tobhe</h1>
+        <p>Daily Business Entry</p>
+    </header>
+    <nav class="main-nav" aria-label="Main navigation">
+        <a href="/">Home</a>
+        <a href="/#branches-section">Customer</a>
+        <a href="/employee">Employee</a>
+        <a href="/owner">Owner</a>
+    </nav>
+
+    <main class="container">
+        <section class="daily-entry">
+            <h2>Start Your Business Day</h2>
+            <p>Select your branch and business date to begin.</p>
+
+            <form id="daily-entry-form">
+                <label for="branch">Branch</label>
+                <select id="branch" name="branch_id" required>
+                    <option value="">Select a branch</option>
+                </select>
+
+                <label for="business-date">Business Date</label>
+                <input
+                    type="date"
+                    id="business-date"
+                    name="business_date"
+                    required
+                >
+
+                <button type="submit">Start Business Day</button>
+            </form>
+
+            <div id="entry-message" role="status"></div>
+        </section>
+
+        <section id="inventory-section" hidden>
+            <h2>Daily Inventory Entry</h2>
+            <div id="inventory-table-container"></div>
+        </section>
+    </main>
+
+    <script src="/static/employee.js"></script>
+</body>
+</html>
