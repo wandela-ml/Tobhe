@@ -86,6 +86,7 @@ async function loadBranches() {
 }
 
 
+
 async function loadProducts(branchId) {
     productsContainer.textContent = "Loading products...";
     orderTotal.textContent = "Total: KSh 0.00";
@@ -117,12 +118,19 @@ async function loadProducts(branchId) {
             price.textContent =
                 `KSh ${Number(product.unit_price).toFixed(2)}`;
 
+            const availability = document.createElement("span");
+            availability.textContent =
+                `Available: ${product.available_quantity}`;
+
             const quantity = document.createElement("input");
             quantity.type = "number";
             quantity.min = "0";
+            quantity.max = product.available_quantity;
             quantity.step = "1";
             quantity.value = "0";
             quantity.required = true;
+            quantity.disabled = product.available_quantity === 0;
+
             quantity.dataset.productId = product.product_id;
             quantity.dataset.unitPrice = product.unit_price;
 
@@ -133,9 +141,16 @@ async function loadProducts(branchId) {
 
             quantity.addEventListener("input", calculateOrderTotal);
 
-            productRow.append(name, price, quantity);
+            productRow.append(
+                name,
+                price,
+                availability,
+                quantity
+            );
+
             productsContainer.appendChild(productRow);
         });
+
     } catch (error) {
         productsContainer.textContent =
             "Products could not be loaded. Please try again.";
@@ -155,14 +170,16 @@ function calculateOrderTotal() {
     quantityInputs.forEach((input) => {
         const quantity = Number(input.value);
         const unitPrice = Number(input.dataset.unitPrice);
+        const available = Number(input.max);
 
         if (
             input.value.trim() === "" ||
             !Number.isInteger(quantity) ||
-            quantity < 0
+            quantity < 0 ||
+            quantity > available
         ) {
             input.setCustomValidity(
-                "Enter a whole number that is zero or greater."
+                `Enter a whole number between 0 and ${available}.`
             );
             return;
         }
@@ -173,7 +190,6 @@ function calculateOrderTotal() {
 
     orderTotal.textContent = `Total: KSh ${total.toFixed(2)}`;
 }
-
 
 customerOrderForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -210,6 +226,7 @@ customerOrderForm.addEventListener("submit", async (event) => {
     }
 
     let phoneNumber;
+
     try {
         phoneNumber = normalizeKenyanPhoneNumber(
             document.getElementById("customer-phone").value
@@ -218,7 +235,7 @@ customerOrderForm.addEventListener("submit", async (event) => {
         orderStatus.textContent = error.message;
         return;
     }
-    
+
     orderStatus.textContent = "Preparing your order...";
 
     if (placeOrderButton) {
@@ -226,79 +243,58 @@ customerOrderForm.addEventListener("submit", async (event) => {
     }
 
     try {
-        const response = await fetch(
-            `/orders?branch_id=${selectedBranchId}`,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(items),
-            }
-        );
+        const response = await fetch("/orders", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                branch_id: selectedBranchId,
+                items: items,
+                phone_number: phoneNumber,
+            }),
+        });
 
         const responseText = await response.text();
-        
+
         let data;
-        
+
         try {
             data = JSON.parse(responseText);
         } catch {
             data = { detail: responseText };
         }
-        
+
         if (!response.ok) {
-            throw new Error(
-                typeof data.detail === "string"
-                ? data.detail
-                : JSON.stringify(data.detail || data)
-            );
-        }
-        
-        orderStatus.textContent =
-            `Order created. Order ID: ${data.order_id}. ` +
-            `Total: KSh ${Number(data.order_total).toFixed(2)}. ` +
-            "Requesting M-Pesa payment...";
-        
-        const paymentQuery = new URLSearchParams({
-            phone_number: phoneNumber,
-        });
-        const paymentResponse = await fetch(
-            `/orders/${encodeURIComponent(data.order_id)}/payment?${paymentQuery}`,
-            {
-                method: "POST",
-            }
-        );
-        const paymentText = await paymentResponse.text();
-        let paymentData;
-        
-        try {
-            paymentData = JSON.parse(paymentText);
-        } catch {
-            paymentData = { detail: paymentText };
-        }
-        
-        if (!paymentResponse.ok) {
-            
-            const detail = paymentData.detail;
+            const detail = data.detail;
+
             const message =
-            typeof detail === "string"
-                ? detail
-                : detail?.message || JSON.stringify(detail || paymentData);
-        
-            orderStatus.textContent =
-                `Order ${data.order_id} was created, but the payment request failed: ${message}`;
-            return;
+                typeof detail === "string"
+                    ? detail
+                    : JSON.stringify(detail || data);
+
+            throw new Error(message);
         }
-        orderStatus.textContent =
-            `Order ${data.order_id} created. ` +
-            `Payment request submitted for KSh ${Number(paymentData.amount).toFixed(2)}. ` +
-            "Check your phone for the M-Pesa prompt. Payment is not yet confirmed.";
+
+        if (data.payment_status === "PENDING") {
+            orderStatus.textContent =
+                `Order ${data.order_id} created. ` +
+                `Total: KSh ${Number(data.order_total).toFixed(2)}. ` +
+                "Check your phone for the M-Pesa prompt and enter your PIN. " +
+                "Payment is not yet confirmed.";
+
+        } else {
+            orderStatus.textContent =
+                `Order ${data.order_id} was created, but Safaricom ` +
+                `did not accept the payment request: ${data.payment_message}`;
+        }
+
     } catch (error) {
         orderStatus.textContent =
             error.message || "Something went wrong. Please try again.";
 
         console.error(error);
+
     } finally {
         if (placeOrderButton) {
             placeOrderButton.disabled = false;

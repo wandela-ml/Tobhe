@@ -6,91 +6,261 @@ import re
 from src.database import get_connection
 from src.mpesa import initiate_payment
 
+#====================================================
+#SETTING PRICES
+#====================================================
+def get_effective_product_price(product_id, order_date):
+    """
+    Return the product price applicable on the given order date.
+    """
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT unit_price
+            FROM product_price_history
+            WHERE product_id = ?
+              AND effective_from <= ?
+            ORDER BY effective_from DESC,
+                     recorded_at DESC,
+                     history_id DESC
+            LIMIT 1
+        """, (product_id, order_date))
+
+        price_record = cursor.fetchone()
+
+        if price_record is not None:
+            return price_record[0]
+
+        cursor.execute("""
+            SELECT unit_price
+            FROM products
+            WHERE product_id = ?
+        """, (product_id,))
+
+        product = cursor.fetchone()
+
+        if product is None:
+            raise ValueError("Product not found.")
+
+        return product[0]
+
+    finally:
+        connection.close()
+
+#=====================================================
+#
+#====================================================
+
+def get_available_stock(cursor, branch_id, product_id, order_date):
+    """
+    Calculate the remaining sellable stock for a branch product.
+    """
+
+    cursor.execute("""
+        SELECT
+            di.starting_quantity,
+            di.deliveries_quantity,
+            p.stock_handling
+        FROM daily_business db
+        JOIN daily_inventory di
+            ON di.daily_id = db.daily_id
+        JOIN products p
+            ON p.product_id = di.product_id
+        WHERE db.branch_id = ?
+          AND db.business_date = ?
+          AND di.product_id = ?
+    """, (branch_id, order_date, product_id))
+
+    inventory = cursor.fetchone()
+
+    if inventory is None:
+        return 0
+
+    starting_quantity, deliveries_quantity, stock_handling = inventory
+
+    if starting_quantity is None:
+        return 0
+
+    if stock_handling == "PERISHABLE":
+        sellable_stock = starting_quantity
+
+    else:
+        if deliveries_quantity is None:
+            return 0
+
+        sellable_stock = starting_quantity + deliveries_quantity
+
+    cursor.execute("""
+        SELECT COALESCE(SUM(oi.quantity), 0)
+        FROM orders o
+        JOIN order_items oi
+            ON oi.order_id = o.order_id
+        WHERE o.branch_id = ?
+          AND o.order_date = ?
+          AND o.order_status IN ('PAID', 'REVIEW_REQUIRED')
+          AND oi.product_id = ?
+    """, (branch_id, order_date, product_id))
+
+    already_sold = cursor.fetchone()[0]
+
+    return max(0, sellable_stock - already_sold)
 
 #=======================================================
 # GET THE PRODUCTS FOR THE BRANCH
 #=======================================================
-def get_branch_products(branch_id):
+def get_branch_products(branch_id, order_date):
+    """
+    Retrieve branch products with prices effective on the order date.
+    """
+
     connection = get_connection()
-    cursor = connection.cursor()
 
-    cursor.execute("""
-        SELECT
-            product_id,
-            product_name,
-            unit_price
-        FROM products
-        WHERE branch_id=?
-        ORDER BY product_id
-    """,(branch_id,))
-    products = cursor.fetchall()
-
-    connection.close()
-    return products
-
-#==============================================================
-# VALIDATE AND CALCULATE THE ORDER
-#==============================================================
-def validate_and_calculate_order(items):
-    connection = get_connection()
-    cursor = connection.cursor()
-
-    order_items = []
-    order_total = 0
-
-
-    for item in items:
-        product_id = item["product_id"]
-        quantity = item["quantity"]
+    try:
+        cursor = connection.cursor()
 
         cursor.execute("""
             SELECT
                 product_id,
                 product_name,
-                unit_price
+                stock_handling
             FROM products
-            WHERE product_id =?
-        """, (product_id,))
-        product = cursor.fetchone()
+            WHERE branch_id = ?
+            ORDER BY product_id
+        """, (branch_id,))
 
+        products = cursor.fetchall()
 
-        if product is None:
-            raise ValueError("Product out of Order!")
+        branch_products = []
 
-        if quantity <=0:
-            raise ValueError("Quantity must be greater than 0.")
+        for product_id, product_name, stock_handling in products:
+            effective_price = get_effective_product_price(
+                product_id,
+                order_date
+            )
+            available_quantity = get_available_stock(
+                cursor,
+                branch_id,
+                product_id,
+                order_date
+                )
 
-        unit_price = product[2]
-        subtotal = unit_price * quantity
+            branch_products.append((
+                product_id,
+                product_name,
+                effective_price,
+                stock_handling,
+                available_quantity
+            ))
 
-        order_item = {
-            "product_id": product[0],
-            "product_name": product[1],
-            "unit_price": unit_price,
-            "quantity" : quantity,
-            "subtotal" : subtotal
-        }
-        order_items.append(order_item)
-        order_total += subtotal
-    connection.close()
-    return order_items, order_total
+        return branch_products
+
+    finally:
+        connection.close()
+#==============================================================
+# VALIDATE AND CALCULATE THE ORDER
+#==============================================================
+
+def validate_and_calculate_order(items, branch_id, order_date):
+    """
+    Validate customer order items against branch products
+    and available stock, then calculate the order total.
+    """
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        order_items = []
+        order_total = 0
+
+        for item in items:
+            product_id = item["product_id"]
+            quantity = item["quantity"]
+
+            # Confirm that the product belongs to this branch.
+            cursor.execute("""
+                SELECT product_id, product_name
+                FROM products
+                WHERE product_id = ?
+                  AND branch_id = ?
+            """, (product_id, branch_id))
+
+            product = cursor.fetchone()
+
+            if product is None:
+                raise ValueError(
+                    "Product does not belong to this branch."
+                )
+
+            # Validate the requested quantity.
+            if (
+                not isinstance(quantity, int)
+                or isinstance(quantity, bool)
+                or quantity <= 0
+            ):
+                raise ValueError(
+                    "Quantity must be a positive integer."
+                )
+
+            # Check the latest available sellable stock.
+            available_quantity = get_available_stock(
+                cursor,
+                branch_id,
+                product_id,
+                order_date
+            )
+
+            if quantity > available_quantity:
+                raise ValueError(
+                    f"Insufficient stock for {product[1]}. "
+                    f"Available quantity: {available_quantity}."
+                )
+
+            # Retrieve the effective product price.
+            unit_price = get_effective_product_price(
+                product_id,
+                order_date
+            )
+
+            subtotal = unit_price * quantity
+
+            order_item = {
+                "product_id": product[0],
+                "product_name": product[1],
+                "unit_price": unit_price,
+                "quantity": quantity,
+                "subtotal": subtotal
+            }
+
+            order_items.append(order_item)
+            order_total += subtotal
+
+        return order_items, order_total
+
+    finally:
+        connection.close()
+
 
 
 #==============================================================
 # RECORD THE ORDER IN THE DATABASE
 #==============================================================
-def record_order(branch_id, order_items, order_total):
+def record_order(branch_id, order_items, order_total, order_date):
     order_id = f"TBH-{uuid4().hex[:12].upper()}"
 
     now =datetime.now()
-    order_date = now.date().isoformat()
     order_time = now.strftime("%H:%M:%S")
 
     connection = get_connection()
     cursor = connection.cursor()
 
     try:
-        connection.execute("BEGIN")
+        connection.execute("BEGIN IMMEDIATE")
         cursor.execute("""
             INSERT INTO orders(
                 order_id,

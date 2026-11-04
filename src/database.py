@@ -483,16 +483,18 @@ def migrate_payments_table():
 # MIGRATE INVENTORY TABLES
 # ==========================================
 def migrate_inventory_tables():
-    """Add the fields and table needed for inventory tracking."""
+    """Migrate inventory tables to the final inventory design."""
 
     connection = get_connection()
 
     try:
         cursor = connection.cursor()
 
-        # 1. Check whether products has a stock target.
+        # 1. Ensure product inventory settings exist.
         cursor.execute("PRAGMA table_info(products)")
-        product_columns = [column[1] for column in cursor.fetchall()]
+        product_columns = {
+            column[1] for column in cursor.fetchall()
+        }
 
         if "target_stock_quantity" not in product_columns:
             cursor.execute("""
@@ -507,24 +509,8 @@ def migrate_inventory_tables():
                 DEFAULT 'CARRY_FORWARD'
             """)
 
-        # 2. Check whether daily_inventory has a closing count.
-        cursor.execute("PRAGMA table_info(daily_inventory)")
-        inventory_columns = [column[1] for column in cursor.fetchall()]
-
-        if "physical_closing_quantity" not in inventory_columns:
-            cursor.execute("""
-                ALTER TABLE daily_inventory
-                ADD COLUMN physical_closing_quantity INTEGER
-            """)
-
-        # 3. Add the owner's projected sales quantity.
-        if "projected_sales_quantity" not in inventory_columns:
-            cursor.execute("""
-                ALTER TABLE daily_inventory
-                ADD COLUMN projected_sales_quantity INTEGER NOT NULL DEFAULT 0
-            """)
-
-        # 4. Create a table for individual stock deliveries.
+        # 2. Ensure the individual delivery history table exists.
+        # Existing records are not deleted or rebuilt.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS stock_movements (
                 movement_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -534,15 +520,156 @@ def migrate_inventory_tables():
                     CHECK (quantity_received > 0),
                 received_at TEXT NOT NULL,
                 notes TEXT,
+
                 FOREIGN KEY (daily_id)
                     REFERENCES daily_business(daily_id),
+
                 FOREIGN KEY (product_id)
                     REFERENCES products(product_id)
             )
         """)
 
+        # 3. Inspect the current inventory table.
+        cursor.execute("PRAGMA table_info(daily_inventory)")
+        inventory_info = cursor.fetchall()
+
+        inventory_columns = {
+            column[1] for column in inventory_info
+        }
+
+        required_existing_columns = {
+            "inventory_id",
+            "daily_id",
+            "product_id",
+            "starting_quantity"
+        }
+
+        missing_columns = required_existing_columns - inventory_columns
+
+        if missing_columns:
+            raise RuntimeError(
+                "Cannot migrate daily_inventory. Missing required columns: "
+                + ", ".join(sorted(missing_columns))
+            )
+
+        starting_quantity_not_null = next(
+            column[3]
+            for column in inventory_info
+            if column[1] == "starting_quantity"
+        )
+
+        obsolete_columns = {
+            "opening_stock_quantity",
+            "preparation_quantity",
+            "preparation_confirmed",
+            "projected_sales_quantity",
+            "deliveries_confirmed"
+        }
+
+        needs_rebuild = (
+            bool(inventory_columns & obsolete_columns)
+            or "deliveries_quantity" not in inventory_columns
+            or "physical_closing_quantity" not in inventory_columns
+            or starting_quantity_not_null
+        )
+
+        if needs_rebuild:
+
+            # 4. Prepare expressions for preserving existing data.
+            physical_closing_expression = (
+                "physical_closing_quantity"
+                if "physical_closing_quantity" in inventory_columns
+                else "NULL"
+            )
+
+            if "deliveries_quantity" in inventory_columns:
+                delivery_expression = "deliveries_quantity"
+
+            else:
+                confirmed_expression = (
+                    "COALESCE(daily_inventory.deliveries_confirmed, 0)"
+                    if "deliveries_confirmed" in inventory_columns
+                    else "0"
+                )
+
+                delivery_expression = f"""
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM stock_movements sm
+                            WHERE sm.daily_id = daily_inventory.daily_id
+                              AND sm.product_id = daily_inventory.product_id
+                        )
+                        THEN (
+                            SELECT SUM(sm.quantity_received)
+                            FROM stock_movements sm
+                            WHERE sm.daily_id = daily_inventory.daily_id
+                              AND sm.product_id = daily_inventory.product_id
+                        )
+
+                        WHEN {confirmed_expression} = 1
+                        THEN 0
+
+                        ELSE NULL
+                    END
+                """
+
+            # 5. Create the final inventory table.
+            cursor.execute("""
+                CREATE TABLE daily_inventory_new (
+                    inventory_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    daily_id INTEGER NOT NULL,
+                    product_id INTEGER NOT NULL,
+                    starting_quantity INTEGER,
+                    deliveries_quantity INTEGER,
+                    physical_closing_quantity INTEGER,
+
+                    FOREIGN KEY (daily_id)
+                        REFERENCES daily_business(daily_id),
+
+                    FOREIGN KEY (product_id)
+                        REFERENCES products(product_id)
+                )
+            """)
+
+            # 6. Copy existing inventory records and delivery totals.
+            cursor.execute(f"""
+                INSERT INTO daily_inventory_new (
+                    inventory_id,
+                    daily_id,
+                    product_id,
+                    starting_quantity,
+                    deliveries_quantity,
+                    physical_closing_quantity
+                )
+                SELECT
+                    daily_inventory.inventory_id,
+                    daily_inventory.daily_id,
+                    daily_inventory.product_id,
+                    daily_inventory.starting_quantity,
+                    {delivery_expression},
+                    {physical_closing_expression}
+                FROM daily_inventory
+            """)
+
+            # 7. Replace the old inventory table.
+            cursor.execute("DROP TABLE daily_inventory")
+
+            cursor.execute("""
+                ALTER TABLE daily_inventory_new
+                RENAME TO daily_inventory
+            """)
+
+        # 8. Recreate the unique day/product index if necessary.
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS
+                idx_daily_inventory_day_product
+            ON daily_inventory(daily_id, product_id)
+        """)
+
         connection.commit()
-        print("Inventory tables migrated successfully.")
+
+        print("Final inventory schema migration completed successfully.")
 
     except Exception:
         connection.rollback()
@@ -582,6 +709,62 @@ def migrate_daily_business_table():
     finally:
         connection.close()
 
+#==================================================
+#MIGRATE PRODUCT PRICE HISTORY
+#=================================================
+
+def migrate_product_price_history():
+    """
+    Create the product price history table.
+
+    Each price record retains its effective date and
+    recording timestamp. Multiple changes on the same
+    effective date are permitted for auditing.
+    """
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS product_price_history (
+                history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                product_id INTEGER NOT NULL,
+
+                unit_price REAL NOT NULL
+                    CHECK (unit_price >= 0),
+
+                effective_from TEXT NOT NULL,
+
+                recorded_at TEXT NOT NULL
+                    DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (product_id)
+                    REFERENCES products(product_id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS
+            idx_product_price_history_lookup
+            ON product_price_history (
+                product_id,
+                effective_from,
+                recorded_at,
+                history_id
+            )
+        """)
+
+        connection.commit()
+
+    except Exception:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()
 
 # ==========================================
 # DATABASE INITIALIZATION
@@ -602,6 +785,7 @@ def initialize_database():
     migrate_payments_table()
     migrate_inventory_tables()
     migrate_daily_business_table()
+    migrate_product_price_history()
 
 
 # ==========================================

@@ -1,35 +1,60 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Tobhe | Employee Daily Entry</title>
+
     <link rel="stylesheet" href="/static/employee.css">
 </head>
+
 <body>
+
+    <!-- Page header -->
     <header class="page-header">
         <h1>Tobhe</h1>
         <p>Daily Business Entry</p>
     </header>
+
+
+    <!-- Main navigation -->
     <nav class="main-nav" aria-label="Main navigation">
         <a href="/">Home</a>
         <a href="/#branches-section">Customer</a>
-        <a href="/employee">Employee</a>
+        <a href="/employee" aria-current="page">Employee</a>
         <a href="/owner">Owner</a>
     </nav>
 
+
     <main class="container">
+
+        <!-- Business day initialization -->
         <section class="daily-entry">
+
             <h2>Start Your Business Day</h2>
-            <p>Select your branch and business date to begin.</p>
+
+            <p>
+                Select the branch and business date to initialize
+                your daily inventory record.
+            </p>
 
             <form id="daily-entry-form">
+
                 <label for="branch">Branch</label>
-                <select id="branch" name="branch_id" required>
+
+                <select
+                    id="branch"
+                    name="branch_id"
+                    required
+                >
                     <option value="">Select a branch</option>
                 </select>
 
+
                 <label for="business-date">Business Date</label>
+
                 <input
                     type="date"
                     id="business-date"
@@ -37,18 +62,60 @@
                     required
                 >
 
-                <button type="submit">Start Business Day</button>
+
+                <button type="submit">
+                    Start Business Day
+                </button>
+
             </form>
 
-            <div id="entry-message" role="status"></div>
+            <div
+                id="entry-message"
+                role="status"
+                aria-live="polite"
+            ></div>
+
         </section>
 
+
+        <!-- Daily inventory -->
         <section id="inventory-section" hidden>
+
             <h2>Daily Inventory Entry</h2>
-            <div id="inventory-table-container"></div>
+
+            <p>
+                Enter the opening stock for perishable products.
+                Carry-forward products display their inherited
+                opening quantities.
+            </p>
+
+            <p>
+                Record deliveries where applicable and enter
+                physical closing quantities at the end of the day.
+            </p>
+
+            <div
+                id="inventory-table-container"
+                aria-live="polite"
+            ></div>
+            <div class="inventory-actions">
+                <button
+                    type="button"
+                    id="save-inventory-button"
+                    > Save Inventory </button>
+                <button type="button"
+                    id="close-business-day-button"
+                    > Close Business Day
+                </button>
+            </div>
+
         </section>
+
     </main>
 
+
+    <!-- Employee page JavaScript -->
     <script src="/static/employee.js"></script>
+
 </body>
 </html>

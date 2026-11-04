@@ -124,26 +124,37 @@ dailySetupForm.addEventListener("submit", async (event) => {
                 maximumFractionDigits: 2
             })}`;
 
-        const openingStockValue = result.products.reduce(
-            (total, product) =>
-                total + Number(product.opening_stock_subtotal || 0),
-            0
-        );
+       const openingStockRows = result.products.map((product) => {
+            const availableStock = product.available_stock;
+        
+            const subtotal =
+                availableStock === null || availableStock === undefined
+                ? null
+                : Number(availableStock) * Number(product.unit_price);
 
-        const openingStockRows = result.products.map((product) => `
-           <tr>
-                <td>${product.product_name}</td>
-                <td>${product.starting_stock}</td>
-                <td>${Number(product.unit_price).toLocaleString("en-KE", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                })}</td>
-                <td>${Number(product.opening_stock_subtotal).toLocaleString("en-KE", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                })}</td>
-            </tr>
-        `).join("");
+            return `
+                <tr>
+                    <td>${product.product_name}</td>
+                    <td>${availableStock ?? "Not recorded"}</td>
+                    <td>${money(product.unit_price)}</td>
+                    <td>${subtotal === null ? "Not recorded" : money(subtotal)}</td>
+                </tr>
+            `;
+        }).join("");
+        
+        const openingStockComplete = result.products.every(
+            product =>
+                product.available_stock !== null &&
+                product.available_stock !== undefined
+            );
+            
+            const expectedIncome = openingStockComplete
+                ? result.products.reduce(
+                    (total, product) =>
+                        total + Number(product.available_stock) * Number(product.unit_price),
+                    0
+                )
+                : null;
 
 
         const salesRows = result.products.map((product) => `
@@ -183,35 +194,29 @@ dailySetupForm.addEventListener("submit", async (event) => {
 
 
         dailySetupResult.innerHTML = `
-            <h3>Opening Inventory and Stock Value</h3>
-
-            <p><strong>Branch:</strong> ${result.branch_name}</p>
-            <p><strong>Business date:</strong> ${result.business_date}</p>
-
-            <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Product</th>
-                        <th>Opening Quantity</th>
-                        <th>Unit Price(KES)</th>
-                        <th>Opening Value(KES)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                     ${openingStockRows}
-                    <tr>
-                        <th>Total Opening Stock Value</th>
-                        <th>${openingStockValue.toLocaleString("en-KE", {
-                            minimumFractionDigits: 2,
-                             maximumFractionDigits: 2
-                        })}</th>
-                        <th></th>
-                        <th></th>
-                    </tr>
-                </tbody>
-            </table>
-            </div>
+            <h3>Opening Stock</h3>
+                <p><strong>Branch:</strong> ${result.branch_name}</p>
+                <p><strong>Business date:</strong> ${result.business_date}</p>
+                
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Available Stock</th>
+                                <th>Unit Price (KES)</th>
+                                <th>Subtotal (KES)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${openingStockRows}
+                        </tbody>
+                    </table>
+                </div>
+                <p>
+                    <strong>Expected Income:</strong>
+                    ${expectedIncome === null ? "Not available — inventory is incomplete" : money(expectedIncome)}
+                </p>
 
             <h3>Daily Sales and Actual Income</h3>
             <div class="table-container">
@@ -226,32 +231,18 @@ dailySetupForm.addEventListener("submit", async (event) => {
                     </thead>
                     <tbody>
                         ${salesRows}
-                        <tr>
-                            <th colspan="3">Total Sales Value</th>
-                            <th>${Number(result.products.reduce(
-                                (total, product) =>
-                                    total + Number(product.sales_subtotal || 0),
-                                0
-                             )).toLocaleString("en-KE", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2
-                            })}</th>
-                        </tr>
                     </tbody>
                 </table>
             </div>
-            <p><strong>Expected Income:</strong> KES ${Number(result.expected_income).toLocaleString("en-KE", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            })}</p>
-            <p><strong>Actual Income (confirmed paid orders):</strong> KES ${Number(result.actual_income).toLocaleString("en-KE", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            })}</p>
-            <p><strong>Income Discrepancy:</strong> KES ${Number(result.income_discrepancy).toLocaleString("en-KE", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            })}</p>
+            
+            <p>
+                <strong>Total Sales Value:</strong>
+                    ${money(result.products.reduce(
+                        (total, product) =>
+                            total + Number(product.sales_subtotal || 0),
+                         0
+                    ))}
+            </p>
 
             <h3>Stock Reconciliation</h3>
                 <div class="table-container">
@@ -271,6 +262,10 @@ dailySetupForm.addEventListener("submit", async (event) => {
                         </tbody>
                     </table>
                 </div>
+                <p>
+                    <strong>Income Discrepancy:</strong>
+                        ${money(Number(result.actual_income) - Number(result.expected_income))}
+                </p>
 
         `;
 
